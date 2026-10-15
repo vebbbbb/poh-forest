@@ -3,7 +3,6 @@ package com.pohforest;
 import com.google.inject.Provides;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -54,8 +53,10 @@ public class PohForestPlugin extends Plugin
 	/** Flat 384x384 quad (two faces, colour 0); also the base under magic trees. */
 	private static final int GROUND_QUAD_MODEL = 7768;
 	private static final int GROUND_AMBIENT = ModelData.DEFAULT_AMBIENT;
+	/** Fallback fog colour when the client reports no skybox colour. */
+	private static final int DEFAULT_SKY = 0xB4D2FF;
 	/** hue 15, sat 4, lightness 47: eyeballed from a screenshot of the plot grass. */
-	private static final int FALLBACK_GRASS = (15 << 10) | (4 << 7) | 47;
+	private static final short FALLBACK_GRASS = JagexColor.packHSL(15, 4, 47);
 
 	@Inject
 	private Client client;
@@ -87,6 +88,8 @@ public class PohForestPlugin extends Plugin
 	@Getter(AccessLevel.PACKAGE)
 	private int groundCount;
 	@Getter(AccessLevel.PACKAGE)
+	private int coverCount;
+	@Getter(AccessLevel.PACKAGE)
 	private String groundColor = "-";
 	@Getter(AccessLevel.PACKAGE)
 	private long spawnMillis;
@@ -95,11 +98,13 @@ public class PohForestPlugin extends Plugin
 	@Getter(AccessLevel.PACKAGE)
 	private String densityCurve = "-";
 	@Getter(AccessLevel.PACKAGE)
-	private ForestPreset activePreset = ForestPreset.MIXED_DECIDUOUS;
+	private ForestPreset activePreset = ForestPreset.DENSE_PINE;
 
 	private final List<RuneLiteObject> objects = new ArrayList<>();
 	private final Map<String, Model> models = new HashMap<>();
 	private boolean spawned;
+	private int fogRgb = DEFAULT_SKY;
+	private int hazeSpan = 1;
 
 	private final HotkeyListener cycleHotkey = new HotkeyListener(() -> config.cycleKey())
 	{
@@ -199,15 +204,14 @@ public class PohForestPlugin extends Plugin
 		ForestPreset palette = config.customPalette();
 		if (palette == ForestPreset.CUSTOM)
 		{
-			palette = ForestPreset.MIXED_DECIDUOUS;
+			palette = ForestPreset.DENSE_PINE;
 		}
 		return palette.getStyle().withShape(
 			config.customNearSpacing() / 10.0,
 			Math.max(config.customNearSpacing(), config.customFarSpacing()) / 10.0,
 			config.customScaleMin(),
 			Math.max(config.customScaleMin(), config.customScaleMax()),
-			config.customOuterBoost(),
-			palette.getStyle().undergrowthSpacing);
+			config.customOuterBoost());
 	}
 
 	private void spawn()
@@ -220,22 +224,33 @@ public class PohForestPlugin extends Plugin
 		List<String> grid = new ArrayList<>();
 		boolean[][] built = ForestLayout.builtTiles(scene, grid);
 		boolean[][] plot = ForestLayout.plotTiles(scene);
+		int cover = config.fakeGround() ? config.grassTufts() : 0;
 		ForestLayout.Result layout = ForestLayout.compute(plot, style, config.clearingMargin(), config.density(),
-			config.maxObjects(), config.undergrowth(), config.seed());
+			config.maxObjects(), config.undergrowth(), cover, ForestModels.COVER, config.seed());
 
 		// Tiles outside the plot have no height data (0); lift objects there to the plot's ground level
 		int groundY = referenceHeight(built, scene);
 
-		if (config.fakeGround())
+		fogRgb = skyRgb();
+		hazeSpan = 1;
+		if (layout.dist != null)
 		{
-			spawnGround(scene, groundY, plot, built);
+			for (ForestLayout.Spot spot : layout.spots)
+			{
+				hazeSpan = Math.max(hazeSpan, spot.dist - config.hazeStart());
+			}
+		}
+
+		if (config.fakeGround() && layout.dist != null)
+		{
+			spawnGround(scene, groundY, plot, built, layout.dist);
 		}
 
 		for (ForestLayout.Spot spot : layout.spots)
 		{
 			LocalPoint at = LocalPoint.fromScene(spot.tileX, spot.tileY, scene).plus(spot.offX, spot.offY);
 			int lift = groundY - Perspective.getTileHeight(client, at, 0);
-			Model model = modelFor(spot, style, lift);
+			Model model = modelFor(spot, lift);
 			if (model == null)
 			{
 				continue;
@@ -251,12 +266,14 @@ public class PohForestPlugin extends Plugin
 
 		treeCount = layout.trees;
 		undergrowthCount = layout.undergrowth;
+		coverCount = layout.cover;
 		spawned = true;
 		spawnMillis = (System.nanoTime() - start) / 1_000_000;
 		describe(layout, style);
 
-		log.debug("{} spawned {} trees + {} undergrowth in {} ms ({} models, {} candidates)", activePreset,
-			treeCount, undergrowthCount, spawnMillis, models.size(), layout.candidates);
+		log.debug("{} spawned {} trees + {} undergrowth + {} grass + {} ground in {} ms ({} models, {} candidates, "
+				+ "fog rgb {}, haze span {})", activePreset, treeCount, undergrowthCount, coverCount, groundCount,
+			spawnMillis, models.size(), layout.candidates, Integer.toHexString(fogRgb), hazeSpan);
 		log.debug("House chunks (# built, . grass filler, blank none), north up:");
 		for (String row : grid)
 		{
@@ -302,27 +319,44 @@ public class PohForestPlugin extends Plugin
 		return 0;
 	}
 
+	/** Sky colour, used as the fog colour. Falls back to a light blue like the POH sky. */
+	private int skyRgb()
+	{
+		int sky = client.getSkyboxColor();
+		return (sky & 0xFFFFFF) != 0 ? sky & 0xFFFFFF : DEFAULT_SKY;
+	}
+
+	/** Fraction of fog (0..1, in steps of 0.1) for something this many tiles from the plot. */
+	private double hazeFor(int dist)
+	{
+		double strength = config.haze() / 100.0;
+		if (strength <= 0)
+		{
+			return 0;
+		}
+		double t = Math.max(0, Math.min(1, (dist - config.hazeStart()) / (double) hazeSpan));
+		return Math.round(strength * t * 10) / 10.0;
+	}
+
 	/**
-	 * One flat grass-coloured quad per empty chunk. Model 7768 is a 384x384 flat quad (two faces,
-	 * colour 0) that magic trees use as a base; scaled up it covers a whole 8x8 chunk.
+	 * Flat grass-coloured quads over every empty chunk, four per chunk so the haze can step in 4
+	 * tile bands. Model 7768 is a 384x384 flat quad (two faces, colour 0) that magic trees use as
+	 * a base; 171/128 * 384 = 513 units covers a 4x4 tile cell with a hair of overlap.
 	 */
-	private void spawnGround(Scene scene, int groundY, boolean[][] plot, boolean[][] built)
+	private void spawnGround(Scene scene, int groundY, boolean[][] plot, boolean[][] built, int[][] dist)
 	{
 		int[][] chunks = scene.getInstanceTemplateChunks()[0];
-		int color = groundColor(scene, plot, built);
-		short shaded = adjustLightness(color, config.groundLightness());
-		groundColor = String.format("hsl %d/%d/%d", (shaded >> 10) & 63, (shaded >> 7) & 7, shaded & 127);
+		short base = groundColor(scene, plot, built);
+		base = adjustColor(base, config.groundSaturation(), config.groundLightness());
+		groundColor = String.format("hsl %d/%d/%d", (base >> 10) & 63, (base >> 7) & 7, base & 127);
 
-		ModelData quad = client.loadModelData(GROUND_QUAD_MODEL);
-		if (quad == null)
+		if (client.loadModelData(GROUND_QUAD_MODEL) == null)
 		{
 			log.debug("Ground quad model {} did not load", GROUND_QUAD_MODEL);
 			return;
 		}
-		// Negative x scale mirrors the quad so its faces point up and are lit from above.
-		// 342/128 * 384 = 1026 units: a chunk is 1024, so neighbours overlap by a hair, no gaps.
-		short tint = shaded;
 
+		int cell = Constants.CHUNK_SIZE / 2;
 		for (int cx = 0; cx < chunks.length; cx++)
 		{
 			for (int cy = 0; cy < chunks[cx].length; cy++)
@@ -331,38 +365,45 @@ public class PohForestPlugin extends Plugin
 				{
 					continue;
 				}
-				// Centre of the chunk is the corner shared by its four middle tiles
-				LocalPoint at = LocalPoint.fromScene(cx * Constants.CHUNK_SIZE + 3, cy * Constants.CHUNK_SIZE + 3, scene)
-					.plus(Perspective.LOCAL_HALF_TILE_SIZE, Perspective.LOCAL_HALF_TILE_SIZE);
-				RuneLiteObject object = client.createRuneLiteObject();
-				object.setModel(groundModel(tint, groundY - Perspective.getTileHeight(client, at, 0)));
-				object.setLocation(at, 0);
-				object.setActive(true);
-				objects.add(object);
-				groundCount++;
+				for (int ox = 0; ox < 2; ox++)
+				{
+					for (int oy = 0; oy < 2; oy++)
+					{
+						// Cell centre is the corner shared by its four middle tiles
+						int tx = cx * Constants.CHUNK_SIZE + ox * cell + cell / 2 - 1;
+						int ty = cy * Constants.CHUNK_SIZE + oy * cell + cell / 2 - 1;
+						LocalPoint at = LocalPoint.fromScene(tx, ty, scene)
+							.plus(Perspective.LOCAL_HALF_TILE_SIZE, Perspective.LOCAL_HALF_TILE_SIZE);
+						short shaded = Haze.blend(base, fogRgb, hazeFor(dist[tx][ty]));
+						RuneLiteObject object = client.createRuneLiteObject();
+						object.setModel(groundModel(shaded, groundY - Perspective.getTileHeight(client, at, 0)));
+						object.setLocation(at, 0);
+						object.setActive(true);
+						objects.add(object);
+						groundCount++;
+					}
+				}
 			}
 		}
 	}
 
 	private Model groundModel(short color, int lift)
 	{
-		// Heights outside the plot are all the same, so this is one model in practice; a hair
-		// below the plot's own ground so the real tiles win where they meet
+		// A hair below the plot's own ground so the real tiles win where they meet
 		String key = "ground|" + color + "|" + lift;
 		return models.computeIfAbsent(key, k ->
 		{
 			ModelData data = client.loadModelData(GROUND_QUAD_MODEL).shallowCopy().cloneVertices().cloneColors();
 			data.recolor((short) 0, color);
-			// Default ambient: 128 came out far brighter than the real textured grass
-			// (hsl 16/4/48 looked lime next to it), so use the normal object shading
-			return data.scale(-342, 128, 342).translate(0, lift + 2, 0)
+			// Negative x scale mirrors the quad so its faces point up and are lit from above
+			return data.scale(-171, 128, 171).translate(0, lift + 2, 0)
 				.light(GROUND_AMBIENT, ModelData.DEFAULT_CONTRAST, ModelData.DEFAULT_X, ModelData.DEFAULT_Y,
 					ModelData.DEFAULT_Z);
 		});
 	}
 
-	/** Colour of the real grass: the first lit tile paint found on a filler chunk, else a fallback. */
-	private int groundColor(Scene scene, boolean[][] plot, boolean[][] built)
+	/** Colour of the real grass: the first open-grass tile paint, else a fallback. */
+	private short groundColor(Scene scene, boolean[][] plot, boolean[][] built)
 	{
 		Tile[][] plane = scene.getTiles()[0];
 		for (int x = 0; x < plane.length; x++)
@@ -378,8 +419,6 @@ public class PohForestPlugin extends Plugin
 				SceneTilePaint paint = tile.getSceneTilePaint();
 				int texture = paint.getTexture();
 				int rgb = texture >= 0 ? client.getTextureProvider().getDefaultColor(texture) : paint.getRBG();
-				log.debug("Grass tile {},{}: texture {} rgb {} sw {}", x, y, texture, Integer.toHexString(rgb),
-					paint.getSwColor());
 				if ((rgb & 0xFFFFFF) != 0)
 				{
 					return JagexColor.rgbToHSL(rgb & 0xFFFFFF, 1.0);
@@ -389,18 +428,19 @@ public class PohForestPlugin extends Plugin
 		return FALLBACK_GRASS;
 	}
 
-	private static short adjustLightness(int color, int delta)
+	private static short adjustColor(short color, int saturationSteps, int lightnessDelta)
 	{
-		int lightness = Math.max(0, Math.min(127, (color & 127) + delta));
-		return (short) ((color & ~127) | lightness);
+		int hue = (color >> 10) & 63;
+		int saturation = Math.max(0, Math.min(7, ((color >> 7) & 7) + saturationSteps));
+		int lightness = Math.max(0, Math.min(127, (color & 127) + lightnessDelta));
+		return JagexColor.packHSL(hue, saturation, lightness);
 	}
 
-	private Model modelFor(ForestLayout.Spot spot, ForestStyle style, int lift)
+	private Model modelFor(ForestLayout.Spot spot, int lift)
 	{
-		Recolour recolour = spot.undergrowth ? null : style.recolour;
-		int variant = recolour == null ? 0 : spot.variant % recolour.targetHues.length;
+		double haze = hazeFor(spot.dist);
 		int scale = Math.max(SCALE_STEP, Math.round(spot.scalePct / (float) SCALE_STEP) * SCALE_STEP);
-		String key = spot.species.name + "|" + scale + "|" + variant + "|" + lift;
+		String key = spot.species.name + "|" + scale + "|" + haze + "|" + lift;
 
 		Model cached = models.get(key);
 		if (cached != null)
@@ -428,15 +468,12 @@ public class PohForestPlugin extends Plugin
 		{
 			data.recolor(spot.species.find[i], spot.species.replace[i]);
 		}
-		if (recolour != null)
+		if (haze > 0)
 		{
-			for (short color : distinct(data.getFaceColors()))
+			short[] colors = data.getFaceColors();
+			for (int i = 0; i < colors.length; i++)
 			{
-				short mapped = recolour.map(color, variant);
-				if (mapped != color)
-				{
-					data.recolor(color, mapped);
-				}
+				colors[i] = Haze.blend(colors[i], fogRgb, haze);
 			}
 		}
 
@@ -444,16 +481,6 @@ public class PohForestPlugin extends Plugin
 		Model model = data.scale(s, s, s).translate(0, lift, 0).light();
 		models.put(key, model);
 		return model;
-	}
-
-	private static Set<Short> distinct(short[] colors)
-	{
-		Set<Short> set = new HashSet<>();
-		for (short c : colors)
-		{
-			set.add(c);
-		}
-		return set;
 	}
 
 	private void despawn()
@@ -467,6 +494,7 @@ public class PohForestPlugin extends Plugin
 		treeCount = 0;
 		undergrowthCount = 0;
 		groundCount = 0;
+		coverCount = 0;
 	}
 
 	@Provides

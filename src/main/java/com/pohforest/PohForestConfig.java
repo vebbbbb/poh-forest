@@ -30,7 +30,7 @@ public interface PohForestConfig extends Config
 	)
 	default ForestPreset preset()
 	{
-		return ForestPreset.MIXED_DECIDUOUS;
+		return ForestPreset.DENSE_PINE;
 	}
 
 	@ConfigItem(
@@ -111,7 +111,55 @@ public interface PohForestConfig extends Config
 	@Range(min = -60, max = 60)
 	default int groundLightness()
 	{
-		return 0;
+		return -6;
+	}
+
+	@ConfigItem(
+		keyName = "groundSaturation",
+		name = "Ground saturation",
+		description = "Steps of colour saturation for the fake ground; the lit quad looks washed out next to real grass",
+		position = 5
+	)
+	@Range(min = -3, max = 3)
+	default int groundSaturation()
+	{
+		return 1;
+	}
+
+	@ConfigItem(
+		keyName = "grassTufts",
+		name = "Grass tufts",
+		description = "How many small grass objects to scatter over the fake ground (0 = none)",
+		position = 5
+	)
+	@Range(min = 0, max = 3000)
+	default int grassTufts()
+	{
+		return 1200;
+	}
+
+	@ConfigItem(
+		keyName = "haze",
+		name = "Haze %",
+		description = "Fades far trees and ground toward the sky colour. Stands in for GPU fog, which is not applied in the POH.",
+		position = 5
+	)
+	@Range(min = 0, max = 100)
+	default int haze()
+	{
+		return 75;
+	}
+
+	@ConfigItem(
+		keyName = "hazeStart",
+		name = "Haze starts (tiles)",
+		description = "Distance from the plot where the haze begins",
+		position = 5
+	)
+	@Range(min = 0, max = 40)
+	default int hazeStart()
+	{
+		return 6;
 	}
 
 	@ConfigItem(
@@ -145,7 +193,7 @@ public interface PohForestConfig extends Config
 	)
 	default ForestPreset customPalette()
 	{
-		return ForestPreset.MIXED_DECIDUOUS;
+		return ForestPreset.DENSE_PINE;
 	}
 
 	@ConfigItem(

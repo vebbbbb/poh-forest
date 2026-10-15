@@ -84,9 +84,12 @@ Trees grow only in empty (void) chunks outside the walkable plot (`ForestLayout.
 Distance field (Chebyshev) from built tiles; nothing within `clearingMargin`. Jittered candidate per tile, accepted nearest-first by Poisson-disc spacing that grows from `nearSpacing` to `farSpacing` over `falloffTiles`; scale grows to `outerBoostPct`. Budget cuts the outer band first. Seeded per tile + preset, so deterministic. Undergrowth is a second pass that avoids trees.
 
 ## Presets
-`ForestPreset` enum, each a `ForestStyle` (weighted `Species` lists, spacing, scale range, optional `Recolour`, undergrowth). `CUSTOM` takes a palette and the slider values. All model IDs live in `ForestModels` with the source object ID. Only willow (8131) is verified in-game.
-- Assumption, unverified: textured foliage does not respond to a hue remap, so Autumn uses only untextured tree models (cache check: 4079, 4082, 1630, 1701 have no textures).
-- Recolour works on Jagex 16-bit HSL: hue = bits 10-15.
+`ForestPreset` enum, each a `ForestStyle` (weighted `Species` lists, spacing, scale range, undergrowth). Kept after in-game review: `DENSE_PINE` (default, judged good) and `REDWOOD` (new, unreviewed), plus `CUSTOM` (a palette plus the slider values). Deciduous, autumn, magic, dead and jungle were removed because they looked poor; they are in git history (before `Remove poor presets`). All model IDs live in `ForestModels` with the source object ID.
+- Redwood uses full-tree models 36721 / 36724 (2976 faces each), so it is heavy: budget accordingly.
+
+## Ground cover and haze
+- Grass tufts: small grass objects (`ForestModels.COVER`) scattered uniformly over the void, separate budget (`grassTufts`, default 1200), kept clear of trunks.
+- Haze replaces GPU fog, which the user reports does not apply in the POH: when a model is built its face colours are blended toward the sky colour (`client.getSkyboxColor()`, else light blue) by distance from the plot (`Haze`, bucketed in 0.1 steps so models are shared). Ground is laid in 4x4 tile cells so the haze steps are fine enough.
 
 ## Testing
 Config changes respawn immediately. Hotkey (default Ctrl+Shift+F) cycles presets. Debug overlay shows counts, spawn time and the spacing curve.
@@ -94,7 +97,7 @@ Config changes respawn immediately. Hotkey (default Ctrl+Shift+F) cycles presets
 ## Fake ground
 Void tiles have no `Tile`, so the scene cannot be painted there. Instead model 7768 (a flat 384x384 quad, colour 0) is recoloured to the sampled grass HSL, mirrored (negative x scale, so the normal faces up) and scaled to 1026 units: one quad per template chunk that is -1. Ground and trees are lifted to the plot's tile height (void tiles read height 0). Assumptions not yet confirmed in-game: the quad is visible from above, its colour matches after lighting (use the `groundLightness` setting), and the plot is flat.
 
-## Fog
+## Fog (GPU plugin)
 Not something the plugin can add. GPU fog is computed in the GPU plugin's vertex shader as the distance to the nearest of the scene edge (tiles 1..103, also in instances) or camera +/- draw distance, fading over `fogDepth` tiles. `fogDepth` defaults to 0, which switches fog off; set it above 0 in the GPU plugin settings. RuneLiteObjects go through the same pipeline, so the forest and fake ground are fogged too. 117HD has its own fog settings.
 
 ## Ground colour

@@ -33,7 +33,8 @@ class PohForestOverlay extends OverlayPanel
 		line("Preset", String.valueOf(plugin.getActivePreset()));
 		line("Objects", plugin.getTreeCount() + " trees + " + plugin.getUndergrowthCount() + " undergrowth / "
 			+ config.maxObjects());
-		line("Ground", plugin.getGroundCount() + " chunks, " + plugin.getGroundColor());
+		line("Ground", plugin.getGroundCount() + " cells, " + plugin.getGroundColor());
+		line("Grass", String.valueOf(plugin.getCoverCount()));
 		line("Spawn time", plugin.getSpawnMillis() + " ms");
 		line("Plot", plugin.getHouseSummary());
 		line("Spacing", plugin.getDensityCurve());

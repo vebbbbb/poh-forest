@@ -33,9 +33,11 @@ final class ForestLayout
 		final int scalePct;
 		final int yaw;
 		final int variant;
+		/** Chebyshev tiles from the walkable plot. */
+		final int dist;
 
 		Spot(int tileX, int tileY, int offX, int offY, Species species, boolean undergrowth, int scalePct,
-			int yaw, int variant)
+			int yaw, int variant, int dist)
 		{
 			this.tileX = tileX;
 			this.tileY = tileY;
@@ -46,6 +48,7 @@ final class ForestLayout
 			this.scalePct = scalePct;
 			this.yaw = yaw;
 			this.variant = variant;
+			this.dist = dist;
 		}
 	}
 
@@ -54,7 +57,10 @@ final class ForestLayout
 		final List<Spot> spots = new ArrayList<>();
 		int trees;
 		int undergrowth;
+		int cover;
 		int candidates;
+		/** Chebyshev tiles to the nearest plot tile, for every scene tile; null if no plot. */
+		int[][] dist;
 		/** minX, maxX, minY, maxY of built tiles in scene tiles; null if nothing is built. */
 		int[] houseBounds;
 	}
@@ -64,6 +70,8 @@ final class ForestLayout
 	/** Keep objects this many tiles inside the scene edge. */
 	private static final int EDGE = 2;
 	private static final double UNDERGROWTH_TREE_CLEARANCE = 1.1;
+	private static final double COVER_SPACING = 1.05;
+	private static final double COVER_TREE_CLEARANCE = 0.7;
 	private static final double TREE_BUDGET_SHARE = 0.75;
 	/** Tiles of random slack in the nearest-first order. */
 	private static final double ORDER_BLUR = 6.0;
@@ -194,7 +202,7 @@ final class ForestLayout
 	 * @param maxObjects hard budget for trees plus undergrowth; the outer band is cut first
 	 */
 	static Result compute(boolean[][] built, ForestStyle style, int margin, int densityPct, int maxObjects,
-		boolean withUndergrowth, long seed)
+		boolean withUndergrowth, int coverBudget, List<Species> cover, long seed)
 	{
 		Result result = new Result();
 
@@ -228,6 +236,7 @@ final class ForestLayout
 			return result;
 		}
 		result.houseBounds = new int[]{minX, maxX, minY, maxY};
+		result.dist = dist;
 
 		// Chebyshev distance to the nearest built tile (8-neighbour BFS)
 		while (!queue.isEmpty())
@@ -329,6 +338,29 @@ final class ForestLayout
 			}
 		}
 
+		if (coverBudget > 0 && !cover.isEmpty())
+		{
+			// Uniformly random order, not nearest-first, so tufts are spread over the whole ground
+			List<Candidate> shuffled = new ArrayList<>(candidates);
+			Collections.shuffle(shuffled, new Random(seed ^ 0xC0FFEEL));
+			SpatialIndex coverIndex = new SpatialIndex();
+			int totalCoverWeight = totalWeight(cover);
+			for (Candidate c : shuffled)
+			{
+				if (result.cover >= coverBudget)
+				{
+					break;
+				}
+				if (coverIndex.anyWithin(c.px, c.py, COVER_SPACING) || treeIndex.anyWithin(c.px, c.py, COVER_TREE_CLEARANCE))
+				{
+					continue;
+				}
+				coverIndex.add(c.px, c.py);
+				result.spots.add(spot(c, pick(cover, totalCoverWeight, rng), true, 80 + rng.nextInt(61), rng));
+				result.cover++;
+			}
+		}
+
 		Collections.shuffle(result.spots, new Random(seed ^ 0x5DEECE66DL));
 		return result;
 	}
@@ -337,7 +369,8 @@ final class ForestLayout
 	{
 		int offX = (int) Math.round((c.px - c.x - 0.5) * 128);
 		int offY = (int) Math.round((c.py - c.y - 0.5) * 128);
-		return new Spot(c.x, c.y, offX, offY, species, undergrowth, scalePct, rng.nextInt(2048), rng.nextInt(1000));
+		return new Spot(c.x, c.y, offX, offY, species, undergrowth, scalePct, rng.nextInt(2048), rng.nextInt(1000),
+			c.dist);
 	}
 
 	/** 0 at the clearing margin, 1 at falloff tiles beyond it. */
