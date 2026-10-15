@@ -30,7 +30,7 @@ public interface PohForestConfig extends Config
 	)
 	default ForestPreset preset()
 	{
-		return ForestPreset.DENSE_PINE;
+		return ForestPreset.REDWOOD;
 	}
 
 	@ConfigItem(

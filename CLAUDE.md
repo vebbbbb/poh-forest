@@ -85,7 +85,7 @@ Distance field (Chebyshev) from built tiles; nothing within `clearingMargin`. Ji
 
 ## Presets
 `ForestPreset` enum, each a `ForestStyle` (weighted `Species` lists, spacing, scale range, undergrowth). Kept after in-game review: `DENSE_PINE` (default, judged good) and `REDWOOD` (new, unreviewed), plus `CUSTOM` (a palette plus the slider values). Deciduous, autumn, magic, dead and jungle were removed because they looked poor; they are in git history (see the parent of commit 2c1dbe5). All model IDs live in `ForestModels` with the source object ID.
-- Redwood uses full-tree models 36721 / 36724 (2976 faces each), so it is heavy: budget accordingly.
+- Redwood (default, liked in-game) uses the full-tree farming-patch models 36721 / 36724 (2976 faces each, so heavy), stretched 190% in height so the trunks tower, with a darker ground (`groundDarken`) and ferns, mushrooms and stumps as undergrowth, after the Varlamore redwood forest. The giant harvestable redwoods (models 36677..36703) are multi-part composites and are not used yet.
 
 ## Ground cover and haze
 - Grass tufts: small grass objects (`ForestModels.COVER`) scattered uniformly over the void, separate budget (`grassTufts`, default 1200), kept clear of trunks.

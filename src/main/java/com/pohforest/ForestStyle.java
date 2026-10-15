@@ -19,9 +19,14 @@ final class ForestStyle
 	final int outerBoostPct;
 	/** Tile spacing between undergrowth objects; 0 turns undergrowth off. */
 	final double undergrowthSpacing;
+	/** Vertical stretch of trees in percent, so a forest can tower; 100 = natural height. */
+	final int heightPct;
+	/** Lightness taken off the fake ground, for a shaded forest floor. */
+	final int groundDarken;
 
 	ForestStyle(List<Species> trees, List<Species> undergrowth, double nearSpacing, double farSpacing,
-		int falloffTiles, int scaleMinPct, int scaleMaxPct, int outerBoostPct, double undergrowthSpacing)
+		int falloffTiles, int scaleMinPct, int scaleMaxPct, int outerBoostPct, double undergrowthSpacing,
+		int heightPct, int groundDarken)
 	{
 		this.trees = trees;
 		this.undergrowth = undergrowth;
@@ -32,6 +37,8 @@ final class ForestStyle
 		this.scaleMaxPct = scaleMaxPct;
 		this.outerBoostPct = outerBoostPct;
 		this.undergrowthSpacing = undergrowthSpacing;
+		this.heightPct = heightPct;
+		this.groundDarken = groundDarken;
 	}
 
 	/** Same palette, different shape: used by the CUSTOM preset's sliders. */
@@ -39,6 +46,6 @@ final class ForestStyle
 		int outerBoostPct)
 	{
 		return new ForestStyle(trees, undergrowth, nearSpacing, farSpacing, falloffTiles, scaleMinPct,
-			scaleMaxPct, outerBoostPct, undergrowthSpacing);
+			scaleMaxPct, outerBoostPct, undergrowthSpacing, heightPct, groundDarken);
 	}
 }

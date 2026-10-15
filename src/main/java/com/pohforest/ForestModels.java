@@ -49,6 +49,16 @@ final class ForestModels
 	// Fern, objects 1298 / 1299 / 1300 (1x1)
 	static final Species FERN_A = Species.of("Fern A", 3, 0.4, 1707);
 	static final Species FERN_B = Species.of("Fern B", 3, 0.4, 1653);
+	// Ferns for the redwood floor: objects 5128 (2x2), 22804 / 22805 (1x1), 54935 (2x2)
+	static final Species FERN_C = Species.of("Fern C", 3, 0.8, 12932);
+	static final Species FERN_D = Species.of("Fern D", 3, 0.4, 23477);
+	static final Species FERN_E = Species.of("Fern E", 3, 0.4, 23478);
+	static final Species FERN_F = Species.of("Fern F", 2, 0.8, 54484);
+	// Mushrooms: objects 6705 / 6706 (1x1), 14443 (2x2), 14444 (1x1)
+	static final Species MUSHROOM_A = Species.of("Mushroom A", 2, 0.4, 11984);
+	static final Species MUSHROOM_B = Species.of("Mushroom B", 2, 0.4, 11985);
+	static final Species MUSHROOM_C = Species.of("Mushroom C", 1, 0.8, 14686);
+	static final Species MUSHROOM_D = Species.of("Mushroom D", 2, 0.5, 14639);
 	// Rocks, object 154 (1x1)
 	static final Species ROCKS = Species.of("Rocks", 2, 0.5, 32530);
 	// Tree stump, object 1354 (2x2)

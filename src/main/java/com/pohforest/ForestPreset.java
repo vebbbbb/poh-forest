@@ -13,13 +13,15 @@ public enum ForestPreset
 				ForestModels.PINE_E, ForestModels.PINE_F),
 			list(ForestModels.SAPLING_A, ForestModels.SAPLING_B, ForestModels.FERN_A, ForestModels.FERN_B,
 				ForestModels.ROCKS, ForestModels.BUSH_B),
-			2.2, 4.0, 40, 85, 115, 140, 3.0)),
-	/** Tall, tightly packed trunks with a few pines to close the gaps: meant to feel impenetrable. */
+			2.2, 4.0, 40, 85, 115, 140, 3.0, 100, 0)),
+	/** Towering, tightly packed trunks over a shaded fern-and-mushroom floor, after the Varlamore redwood forest. */
 	REDWOOD("Redwood",
 		new ForestStyle(
 			list(ForestModels.REDWOOD_A, ForestModels.REDWOOD_B, ForestModels.PINE_A, ForestModels.PINE_C),
-			list(ForestModels.FERN_A, ForestModels.FERN_B, ForestModels.SAPLING_A, ForestModels.STUMP),
-			1.9, 4.2, 30, 140, 180, 150, 3.5)),
+			list(ForestModels.FERN_C, ForestModels.FERN_D, ForestModels.FERN_E, ForestModels.FERN_F,
+				ForestModels.MUSHROOM_A, ForestModels.MUSHROOM_B, ForestModels.MUSHROOM_C, ForestModels.MUSHROOM_D,
+				ForestModels.STUMP),
+			1.9, 4.2, 30, 140, 180, 150, 2.4, 190, 12)),
 	/** Takes the palette of the "custom palette" setting and shapes it with the individual sliders. */
 	CUSTOM("Custom", null);
 

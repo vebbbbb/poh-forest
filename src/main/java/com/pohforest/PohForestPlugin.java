@@ -243,14 +243,14 @@ public class PohForestPlugin extends Plugin
 
 		if (config.fakeGround() && layout.dist != null)
 		{
-			spawnGround(scene, groundY, plot, built, layout.dist);
+			spawnGround(scene, groundY, plot, built, layout.dist, style);
 		}
 
 		for (ForestLayout.Spot spot : layout.spots)
 		{
 			LocalPoint at = LocalPoint.fromScene(spot.tileX, spot.tileY, scene).plus(spot.offX, spot.offY);
 			int lift = groundY - Perspective.getTileHeight(client, at, 0);
-			Model model = modelFor(spot, lift);
+			Model model = modelFor(spot, style, lift);
 			if (model == null)
 			{
 				continue;
@@ -343,11 +343,12 @@ public class PohForestPlugin extends Plugin
 	 * tile bands. Model 7768 is a 384x384 flat quad (two faces, colour 0) that magic trees use as
 	 * a base; 171/128 * 384 = 513 units covers a 4x4 tile cell with a hair of overlap.
 	 */
-	private void spawnGround(Scene scene, int groundY, boolean[][] plot, boolean[][] built, int[][] dist)
+	private void spawnGround(Scene scene, int groundY, boolean[][] plot, boolean[][] built, int[][] dist,
+		ForestStyle style)
 	{
 		int[][] chunks = scene.getInstanceTemplateChunks()[0];
 		short base = groundColor(scene, plot, built);
-		base = adjustColor(base, config.groundSaturation(), config.groundLightness());
+		base = adjustColor(base, config.groundSaturation(), config.groundLightness() - style.groundDarken);
 		groundColor = String.format("hsl %d/%d/%d", (base >> 10) & 63, (base >> 7) & 7, base & 127);
 
 		if (client.loadModelData(GROUND_QUAD_MODEL) == null)
@@ -436,11 +437,13 @@ public class PohForestPlugin extends Plugin
 		return JagexColor.packHSL(hue, saturation, lightness);
 	}
 
-	private Model modelFor(ForestLayout.Spot spot, int lift)
+	private Model modelFor(ForestLayout.Spot spot, ForestStyle style, int lift)
 	{
 		double haze = hazeFor(spot.dist);
 		int scale = Math.max(SCALE_STEP, Math.round(spot.scalePct / (float) SCALE_STEP) * SCALE_STEP);
-		String key = spot.species.name + "|" + scale + "|" + haze + "|" + lift;
+		// Only trees are stretched; undergrowth and grass keep their natural proportions
+		int height = spot.undergrowth ? 100 : style.heightPct;
+		String key = spot.species.name + "|" + scale + "|" + height + "|" + haze + "|" + lift;
 
 		Model cached = models.get(key);
 		if (cached != null)
@@ -478,7 +481,7 @@ public class PohForestPlugin extends Plugin
 		}
 
 		int s = 128 * scale / 100;
-		Model model = data.scale(s, s, s).translate(0, lift, 0).light();
+		Model model = data.scale(s, s * height / 100, s).translate(0, lift, 0).light();
 		models.put(key, model);
 		return model;
 	}
