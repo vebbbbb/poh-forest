@@ -14,12 +14,14 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.GameState;
+import net.runelite.api.JagexColor;
 import net.runelite.api.Model;
 import net.runelite.api.ModelData;
 import net.runelite.api.Perspective;
 import net.runelite.api.Player;
 import net.runelite.api.RuneLiteObject;
 import net.runelite.api.Scene;
+import net.runelite.api.SceneTilePaint;
 import net.runelite.api.Tile;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
@@ -51,9 +53,7 @@ public class PohForestPlugin extends Plugin
 
 	/** Flat 384x384 quad (two faces, colour 0); also the base under magic trees. */
 	private static final int GROUND_QUAD_MODEL = 7768;
-	/** Hue range (Jagex HSL, 0-63) accepted when sampling the real grass colour. */
-	private static final int GRASS_HUE_MIN = 10;
-	private static final int GRASS_HUE_MAX = 26;
+	private static final int GROUND_AMBIENT = 128;
 	/** hue 15, sat 4, lightness 47: eyeballed from a screenshot of the plot grass. */
 	private static final int FALLBACK_GRASS = (15 << 10) | (4 << 7) | 47;
 
@@ -219,7 +219,8 @@ public class PohForestPlugin extends Plugin
 
 		List<String> grid = new ArrayList<>();
 		boolean[][] built = ForestLayout.builtTiles(scene, grid);
-		ForestLayout.Result layout = ForestLayout.compute(built, style, config.clearingMargin(), config.density(),
+		boolean[][] plot = ForestLayout.plotTiles(scene);
+		ForestLayout.Result layout = ForestLayout.compute(plot, style, config.clearingMargin(), config.density(),
 			config.maxObjects(), config.undergrowth(), config.seed());
 
 		// Tiles outside the plot have no height data (0); lift objects there to the plot's ground level
@@ -227,7 +228,7 @@ public class PohForestPlugin extends Plugin
 
 		if (config.fakeGround())
 		{
-			spawnGround(scene, groundY);
+			spawnGround(scene, groundY, plot, built);
 		}
 
 		for (ForestLayout.Spot spot : layout.spots)
@@ -268,14 +269,14 @@ public class PohForestPlugin extends Plugin
 		int margin = config.clearingMargin();
 		if (layout.houseBounds == null)
 		{
-			houseSummary = "no built rooms found";
+			houseSummary = "no plot found";
 		}
 		else
 		{
 			int[] b = layout.houseBounds;
 			int last = Constants.SCENE_SIZE - 1;
 			// Tiles between the outermost room and the scene edge, i.e. how far a forest can reach
-			houseSummary = "x " + b[0] + "-" + b[1] + ", y " + b[2] + "-" + b[3] + " | to edge W" + b[0]
+			houseSummary = "plot x " + b[0] + "-" + b[1] + ", y " + b[2] + "-" + b[3] + " | to edge W" + b[0]
 				+ " E" + (last - b[1]) + " S" + b[2] + " N" + (last - b[3]);
 		}
 		double density = Math.max(0.1, config.density() / 100.0);
@@ -305,10 +306,10 @@ public class PohForestPlugin extends Plugin
 	 * One flat grass-coloured quad per empty chunk. Model 7768 is a 384x384 flat quad (two faces,
 	 * colour 0) that magic trees use as a base; scaled up it covers a whole 8x8 chunk.
 	 */
-	private void spawnGround(Scene scene, int groundY)
+	private void spawnGround(Scene scene, int groundY, boolean[][] plot, boolean[][] built)
 	{
 		int[][] chunks = scene.getInstanceTemplateChunks()[0];
-		int color = groundColor(scene);
+		int color = groundColor(scene, plot, built);
 		short shaded = adjustLightness(color, config.groundLightness());
 		groundColor = String.format("hsl %d/%d/%d", (shaded >> 10) & 63, (shaded >> 7) & 7, shaded & 127);
 
@@ -352,27 +353,36 @@ public class PohForestPlugin extends Plugin
 		{
 			ModelData data = client.loadModelData(GROUND_QUAD_MODEL).shallowCopy().cloneVertices().cloneColors();
 			data.recolor((short) 0, color);
-			return data.scale(-342, 128, 342).translate(0, lift + 2, 0).light();
+			// High ambient so the flat quad shows close to its own colour instead of the
+			// default object shading, which is much darker than the lit terrain
+			return data.scale(-342, 128, 342).translate(0, lift + 2, 0)
+				.light(GROUND_AMBIENT, ModelData.DEFAULT_CONTRAST, ModelData.DEFAULT_X, ModelData.DEFAULT_Y,
+					ModelData.DEFAULT_Z);
 		});
 	}
 
 	/** Colour of the real grass: the first lit tile paint found on a filler chunk, else a fallback. */
-	private int groundColor(Scene scene)
+	private int groundColor(Scene scene, boolean[][] plot, boolean[][] built)
 	{
 		Tile[][] plane = scene.getTiles()[0];
 		for (int x = 0; x < plane.length; x++)
 		{
 			for (int y = 0; y < plane[x].length; y++)
 			{
+				// Open grass: inside the plot but not in a built room
 				Tile tile = plane[x][y];
-				if (tile == null || tile.getSceneTilePaint() == null)
+				if (!plot[x][y] || built[x][y] || tile == null || tile.getSceneTilePaint() == null)
 				{
 					continue;
 				}
-				int c = tile.getSceneTilePaint().getSwColor();
-				if (c >= 0 && c <= 0xFFFF && (c >> 10) >= GRASS_HUE_MIN && (c >> 10) <= GRASS_HUE_MAX)
+				SceneTilePaint paint = tile.getSceneTilePaint();
+				int texture = paint.getTexture();
+				int rgb = texture >= 0 ? client.getTextureProvider().getDefaultColor(texture) : paint.getRBG();
+				log.debug("Grass tile {},{}: texture {} rgb {} sw {}", x, y, texture, Integer.toHexString(rgb),
+					paint.getSwColor());
+				if ((rgb & 0xFFFFFF) != 0)
 				{
-					return c;
+					return JagexColor.rgbToHSL(rgb & 0xFFFFFF, 1.0);
 				}
 			}
 		}

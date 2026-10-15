@@ -15,9 +15,9 @@ import net.runelite.api.Tile;
  * Works out where trees go. Pure computation apart from {@link #builtTiles}, so a layout is
  * reproducible from (house, style, config, seed).
  *
- * The house footprint is the set of 8x8 template chunks that hold something built: a wall, a
- * decorative object or a game object on any plane. Plain grass filler chunks hold none of those,
- * so the forest can grow over them, while built rooms (and the garden) stay clear.
+ * Trees only grow in empty (void) chunks outside the walkable plot. Built chunks, found from a wall, a
+ * decorative object or a game object, are used for the debug map and the ground height reference.
+ * Plain grass filler chunks hold none of those but are walkable, so they stay clear too.
  */
 final class ForestLayout
 {
@@ -112,6 +112,38 @@ final class ForestLayout
 			}
 		}
 		return built;
+	}
+
+	/**
+	 * Every tile of the walkable plot: chunks that exist in the template on any plane, built or
+	 * plain grass. The forest only grows outside this, in the empty void chunks.
+	 */
+	static boolean[][] plotTiles(Scene scene)
+	{
+		boolean[][] plot = new boolean[SCENE][SCENE];
+		int[][][] templates = scene.getInstanceTemplateChunks();
+		int chunks = SCENE / CHUNK;
+		for (int[][] plane : templates)
+		{
+			for (int cx = 0; cx < chunks; cx++)
+			{
+				for (int cy = 0; cy < chunks; cy++)
+				{
+					if (plane[cx][cy] == -1)
+					{
+						continue;
+					}
+					for (int x = cx * CHUNK; x < (cx + 1) * CHUNK; x++)
+					{
+						for (int y = cy * CHUNK; y < (cy + 1) * CHUNK; y++)
+						{
+							plot[x][y] = true;
+						}
+					}
+				}
+			}
+		}
+		return plot;
 	}
 
 	private static boolean chunkHasContent(Tile[][][] tiles, int cx, int cy)

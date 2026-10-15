@@ -47,7 +47,7 @@ public interface PohForestConfig extends Config
 	@ConfigItem(
 		keyName = "clearingMargin",
 		name = "Clearing margin",
-		description = "Tiles kept free of trees around every room",
+		description = "Tiles kept clear between the walkable plot and the first trees",
 		position = 2
 	)
 	@Range(min = 0, max = 10)

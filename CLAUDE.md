@@ -78,7 +78,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - The plot of rooms is 8x8 rooms in the middle of the scene; the ground exists only under it. Trees outside the plot stand in the void (no fake ground yet).
 
 ## Footprint
-`ForestLayout.builtTiles`: a chunk is "built" if any tile on any plane has a wall, decorative or game object. Plain grass filler chunks have none, so forest grows over them. Recomputed on every scene load, so build mode and room changes are picked up (LOADING despawns, the next tick respawns). Debug log prints the chunk map (`#` built, `.` filler).
+Trees grow only in empty (void) chunks outside the walkable plot (`ForestLayout.plotTiles`: template chunk != -1 on any plane); grass filler chunks inside the plot are walkable so they stay clear. `builtTiles` (wall, decorative or game object in a chunk) only feeds the debug chunk map and the ground height reference. Recomputed on every scene load, so build mode and room changes are picked up (LOADING despawns, the next tick respawns). Debug log prints the chunk map (`#` built, `.` filler, blank void).
 
 ## Placement
 Distance field (Chebyshev) from built tiles; nothing within `clearingMargin`. Jittered candidate per tile, accepted nearest-first by Poisson-disc spacing that grows from `nearSpacing` to `farSpacing` over `falloffTiles`; scale grows to `outerBoostPct`. Budget cuts the outer band first. Seeded per tile + preset, so deterministic. Undergrowth is a second pass that avoids trees.
@@ -93,3 +93,9 @@ Config changes respawn immediately. Hotkey (default Ctrl+Shift+F) cycles presets
 
 ## Fake ground
 Void tiles have no `Tile`, so the scene cannot be painted there. Instead model 7768 (a flat 384x384 quad, colour 0) is recoloured to the sampled grass HSL, mirrored (negative x scale, so the normal faces up) and scaled to 1026 units: one quad per template chunk that is -1. Ground and trees are lifted to the plot's tile height (void tiles read height 0). Assumptions not yet confirmed in-game: the quad is visible from above, its colour matches after lighting (use the `groundLightness` setting), and the plot is flat.
+
+## Fog
+Not something the plugin can add. GPU fog is computed in the GPU plugin's vertex shader as the distance to the nearest of the scene edge (tiles 1..103, also in instances) or camera +/- draw distance, fading over `fogDepth` tiles. `fogDepth` defaults to 0, which switches fog off; set it above 0 in the GPU plugin settings. RuneLiteObjects go through the same pipeline, so the forest and fake ground are fogged too. 117HD has its own fog settings.
+
+## Ground colour
+Sampled from the real grass tile: the texture's default colour if the paint is textured, else `SceneTilePaint.getRBG()`, converted with `JagexColor.rgbToHSL`. The quad is lit with a high ambient (128) so it is not darkened like an ordinary object. The first attempt used the tile's lit vertex colour, which came out almost black (lightness 2).
