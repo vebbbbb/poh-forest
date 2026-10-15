@@ -90,3 +90,6 @@ Distance field (Chebyshev) from built tiles; nothing within `clearingMargin`. Ji
 
 ## Testing
 Config changes respawn immediately. Hotkey (default Ctrl+Shift+F) cycles presets. Debug overlay shows counts, spawn time and the spacing curve.
+
+## Fake ground
+Void tiles have no `Tile`, so the scene cannot be painted there. Instead model 7768 (a flat 384x384 quad, colour 0) is recoloured to the sampled grass HSL, mirrored (negative x scale, so the normal faces up) and scaled to 1026 units: one quad per template chunk that is -1. Ground and trees are lifted to the plot's tile height (void tiles read height 0). Assumptions not yet confirmed in-game: the quad is visible from above, its colour matches after lighting (use the `groundLightness` setting), and the plot is flat.

@@ -16,9 +16,11 @@ import net.runelite.api.Constants;
 import net.runelite.api.GameState;
 import net.runelite.api.Model;
 import net.runelite.api.ModelData;
+import net.runelite.api.Perspective;
 import net.runelite.api.Player;
 import net.runelite.api.RuneLiteObject;
 import net.runelite.api.Scene;
+import net.runelite.api.Tile;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.GameStateChanged;
@@ -47,6 +49,14 @@ public class PohForestPlugin extends Plugin
 	/** Scale is bucketed to this many percent so equal-looking trees share one Model. */
 	private static final int SCALE_STEP = 8;
 
+	/** Flat 384x384 quad (two faces, colour 0); also the base under magic trees. */
+	private static final int GROUND_QUAD_MODEL = 7768;
+	/** Hue range (Jagex HSL, 0-63) accepted when sampling the real grass colour. */
+	private static final int GRASS_HUE_MIN = 10;
+	private static final int GRASS_HUE_MAX = 26;
+	/** hue 15, sat 4, lightness 47: eyeballed from a screenshot of the plot grass. */
+	private static final int FALLBACK_GRASS = (15 << 10) | (4 << 7) | 47;
+
 	@Inject
 	private Client client;
 
@@ -74,6 +84,10 @@ public class PohForestPlugin extends Plugin
 	private int treeCount;
 	@Getter(AccessLevel.PACKAGE)
 	private int undergrowthCount;
+	@Getter(AccessLevel.PACKAGE)
+	private int groundCount;
+	@Getter(AccessLevel.PACKAGE)
+	private String groundColor = "-";
 	@Getter(AccessLevel.PACKAGE)
 	private long spawnMillis;
 	@Getter(AccessLevel.PACKAGE)
@@ -208,9 +222,19 @@ public class PohForestPlugin extends Plugin
 		ForestLayout.Result layout = ForestLayout.compute(built, style, config.clearingMargin(), config.density(),
 			config.maxObjects(), config.undergrowth(), config.seed());
 
+		// Tiles outside the plot have no height data (0); lift objects there to the plot's ground level
+		int groundY = referenceHeight(built, scene);
+
+		if (config.fakeGround())
+		{
+			spawnGround(scene, groundY);
+		}
+
 		for (ForestLayout.Spot spot : layout.spots)
 		{
-			Model model = modelFor(spot, style);
+			LocalPoint at = LocalPoint.fromScene(spot.tileX, spot.tileY, scene).plus(spot.offX, spot.offY);
+			int lift = groundY - Perspective.getTileHeight(client, at, 0);
+			Model model = modelFor(spot, style, lift);
 			if (model == null)
 			{
 				continue;
@@ -218,7 +242,7 @@ public class PohForestPlugin extends Plugin
 			RuneLiteObject object = client.createRuneLiteObject();
 			object.setModel(model);
 			// Plane 0 always: lower planes stay visible from upstairs and sit on the ground
-			object.setLocation(LocalPoint.fromScene(spot.tileX, spot.tileY, scene).plus(spot.offX, spot.offY), 0);
+			object.setLocation(at, 0);
 			object.setOrientation(spot.yaw);
 			object.setActive(true);
 			objects.add(object);
@@ -261,12 +285,112 @@ public class PohForestPlugin extends Plugin
 		log.debug("margin {} | {}", margin, houseSummary);
 	}
 
-	private Model modelFor(ForestLayout.Spot spot, ForestStyle style)
+	/** Height (raw tile-height units) of the plot's ground, taken from the first built tile. */
+	private int referenceHeight(boolean[][] built, Scene scene)
+	{
+		for (int x = 0; x < built.length; x++)
+		{
+			for (int y = 0; y < built[x].length; y++)
+			{
+				if (built[x][y])
+				{
+					return Perspective.getTileHeight(client, LocalPoint.fromScene(x, y, scene), 0);
+				}
+			}
+		}
+		return 0;
+	}
+
+	/**
+	 * One flat grass-coloured quad per empty chunk. Model 7768 is a 384x384 flat quad (two faces,
+	 * colour 0) that magic trees use as a base; scaled up it covers a whole 8x8 chunk.
+	 */
+	private void spawnGround(Scene scene, int groundY)
+	{
+		int[][] chunks = scene.getInstanceTemplateChunks()[0];
+		int color = groundColor(scene);
+		short shaded = adjustLightness(color, config.groundLightness());
+		groundColor = String.format("hsl %d/%d/%d", (shaded >> 10) & 63, (shaded >> 7) & 7, shaded & 127);
+
+		ModelData quad = client.loadModelData(GROUND_QUAD_MODEL);
+		if (quad == null)
+		{
+			log.debug("Ground quad model {} did not load", GROUND_QUAD_MODEL);
+			return;
+		}
+		// Negative x scale mirrors the quad so its faces point up and are lit from above.
+		// 342/128 * 384 = 1026 units: a chunk is 1024, so neighbours overlap by a hair, no gaps.
+		short tint = shaded;
+
+		for (int cx = 0; cx < chunks.length; cx++)
+		{
+			for (int cy = 0; cy < chunks[cx].length; cy++)
+			{
+				if (chunks[cx][cy] != -1)
+				{
+					continue;
+				}
+				// Centre of the chunk is the corner shared by its four middle tiles
+				LocalPoint at = LocalPoint.fromScene(cx * Constants.CHUNK_SIZE + 3, cy * Constants.CHUNK_SIZE + 3, scene)
+					.plus(Perspective.LOCAL_HALF_TILE_SIZE, Perspective.LOCAL_HALF_TILE_SIZE);
+				RuneLiteObject object = client.createRuneLiteObject();
+				object.setModel(groundModel(tint, groundY - Perspective.getTileHeight(client, at, 0)));
+				object.setLocation(at, 0);
+				object.setActive(true);
+				objects.add(object);
+				groundCount++;
+			}
+		}
+	}
+
+	private Model groundModel(short color, int lift)
+	{
+		// Heights outside the plot are all the same, so this is one model in practice; a hair
+		// below the plot's own ground so the real tiles win where they meet
+		String key = "ground|" + color + "|" + lift;
+		return models.computeIfAbsent(key, k ->
+		{
+			ModelData data = client.loadModelData(GROUND_QUAD_MODEL).shallowCopy().cloneVertices().cloneColors();
+			data.recolor((short) 0, color);
+			return data.scale(-342, 128, 342).translate(0, lift + 2, 0).light();
+		});
+	}
+
+	/** Colour of the real grass: the first lit tile paint found on a filler chunk, else a fallback. */
+	private int groundColor(Scene scene)
+	{
+		Tile[][] plane = scene.getTiles()[0];
+		for (int x = 0; x < plane.length; x++)
+		{
+			for (int y = 0; y < plane[x].length; y++)
+			{
+				Tile tile = plane[x][y];
+				if (tile == null || tile.getSceneTilePaint() == null)
+				{
+					continue;
+				}
+				int c = tile.getSceneTilePaint().getSwColor();
+				if (c >= 0 && c <= 0xFFFF && (c >> 10) >= GRASS_HUE_MIN && (c >> 10) <= GRASS_HUE_MAX)
+				{
+					return c;
+				}
+			}
+		}
+		return FALLBACK_GRASS;
+	}
+
+	private static short adjustLightness(int color, int delta)
+	{
+		int lightness = Math.max(0, Math.min(127, (color & 127) + delta));
+		return (short) ((color & ~127) | lightness);
+	}
+
+	private Model modelFor(ForestLayout.Spot spot, ForestStyle style, int lift)
 	{
 		Recolour recolour = spot.undergrowth ? null : style.recolour;
 		int variant = recolour == null ? 0 : spot.variant % recolour.targetHues.length;
 		int scale = Math.max(SCALE_STEP, Math.round(spot.scalePct / (float) SCALE_STEP) * SCALE_STEP);
-		String key = spot.species.name + "|" + scale + "|" + variant;
+		String key = spot.species.name + "|" + scale + "|" + variant + "|" + lift;
 
 		Model cached = models.get(key);
 		if (cached != null)
@@ -307,7 +431,7 @@ public class PohForestPlugin extends Plugin
 		}
 
 		int s = 128 * scale / 100;
-		Model model = data.scale(s, s, s).light();
+		Model model = data.scale(s, s, s).translate(0, lift, 0).light();
 		models.put(key, model);
 		return model;
 	}
@@ -332,6 +456,7 @@ public class PohForestPlugin extends Plugin
 		spawned = false;
 		treeCount = 0;
 		undergrowthCount = 0;
+		groundCount = 0;
 	}
 
 	@Provides

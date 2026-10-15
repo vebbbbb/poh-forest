@@ -92,6 +92,29 @@ public interface PohForestConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "fakeGround",
+		name = "Fake ground",
+		description = "Lays a flat grass-coloured surface over the empty void so trees stand on something",
+		position = 5
+	)
+	default boolean fakeGround()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "groundLightness",
+		name = "Ground lightness",
+		description = "Brighten or darken the fake ground to match the real grass",
+		position = 5
+	)
+	@Range(min = -60, max = 60)
+	default int groundLightness()
+	{
+		return 0;
+	}
+
+	@ConfigItem(
 		keyName = "cycleKey",
 		name = "Cycle preset hotkey",
 		description = "Switches to the next preset",
