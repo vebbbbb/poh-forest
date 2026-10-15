@@ -67,3 +67,26 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 @AGENTS.md
+
+---
+
+# POH Forest design notes
+
+## Limits (looked up, not measured in-game)
+- The POH is an instance: the loaded scene is 104x104 tiles (13x13 chunks of 8x8), so no object can sit further out than that. `EXTENDED_SCENE_SIZE` (184) only applies to non-instanced scenes.
+- GPU plugin: draw distance max 184 tiles (default 25), fog depth max 100. 117HD: same maxima, default draw distance 50. Both read from the 1.13.2 sources. The user's draw-distance setting, not the plugin, decides how much of the forest is actually drawn.
+- The plot of rooms is 8x8 rooms in the middle of the scene; the ground exists only under it. Trees outside the plot stand in the void (no fake ground yet).
+
+## Footprint
+`ForestLayout.builtTiles`: a chunk is "built" if any tile on any plane has a wall, decorative or game object. Plain grass filler chunks have none, so forest grows over them. Recomputed on every scene load, so build mode and room changes are picked up (LOADING despawns, the next tick respawns). Debug log prints the chunk map (`#` built, `.` filler).
+
+## Placement
+Distance field (Chebyshev) from built tiles; nothing within `clearingMargin`. Jittered candidate per tile, accepted nearest-first by Poisson-disc spacing that grows from `nearSpacing` to `farSpacing` over `falloffTiles`; scale grows to `outerBoostPct`. Budget cuts the outer band first. Seeded per tile + preset, so deterministic. Undergrowth is a second pass that avoids trees.
+
+## Presets
+`ForestPreset` enum, each a `ForestStyle` (weighted `Species` lists, spacing, scale range, optional `Recolour`, undergrowth). `CUSTOM` takes a palette and the slider values. All model IDs live in `ForestModels` with the source object ID. Only willow (8131) is verified in-game.
+- Textured foliage ignores hue, so Autumn uses only untextured tree models.
+- Recolour works on Jagex 16-bit HSL: hue = bits 10-15.
+
+## Testing
+Config changes respawn immediately. Hotkey (default Ctrl+Shift+F) cycles presets. Debug overlay shows counts, spawn time and the spacing curve.
