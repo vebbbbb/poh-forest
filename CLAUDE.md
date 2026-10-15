@@ -85,7 +85,7 @@ Distance field (Chebyshev) from built tiles; nothing within `clearingMargin`. Ji
 
 ## Presets
 `ForestPreset` enum, each a `ForestStyle` (weighted `Species` lists, spacing, scale range, optional `Recolour`, undergrowth). `CUSTOM` takes a palette and the slider values. All model IDs live in `ForestModels` with the source object ID. Only willow (8131) is verified in-game.
-- Textured foliage ignores hue, so Autumn uses only untextured tree models.
+- Assumption, unverified: textured foliage does not respond to a hue remap, so Autumn uses only untextured tree models (cache check: 4079, 4082, 1630, 1701 have no textures).
 - Recolour works on Jagex 16-bit HSL: hue = bits 10-15.
 
 ## Testing
