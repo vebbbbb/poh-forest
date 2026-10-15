@@ -53,7 +53,7 @@ public class PohForestPlugin extends Plugin
 
 	/** Flat 384x384 quad (two faces, colour 0); also the base under magic trees. */
 	private static final int GROUND_QUAD_MODEL = 7768;
-	private static final int GROUND_AMBIENT = 128;
+	private static final int GROUND_AMBIENT = ModelData.DEFAULT_AMBIENT;
 	/** hue 15, sat 4, lightness 47: eyeballed from a screenshot of the plot grass. */
 	private static final int FALLBACK_GRASS = (15 << 10) | (4 << 7) | 47;
 
@@ -353,8 +353,8 @@ public class PohForestPlugin extends Plugin
 		{
 			ModelData data = client.loadModelData(GROUND_QUAD_MODEL).shallowCopy().cloneVertices().cloneColors();
 			data.recolor((short) 0, color);
-			// High ambient so the flat quad shows close to its own colour instead of the
-			// default object shading, which is much darker than the lit terrain
+			// Default ambient: 128 came out far brighter than the real textured grass
+			// (hsl 16/4/48 looked lime next to it), so use the normal object shading
 			return data.scale(-342, 128, 342).translate(0, lift + 2, 0)
 				.light(GROUND_AMBIENT, ModelData.DEFAULT_CONTRAST, ModelData.DEFAULT_X, ModelData.DEFAULT_Y,
 					ModelData.DEFAULT_Z);

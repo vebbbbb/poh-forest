@@ -65,6 +65,8 @@ final class ForestLayout
 	private static final int EDGE = 2;
 	private static final double UNDERGROWTH_TREE_CLEARANCE = 1.1;
 	private static final double TREE_BUDGET_SHARE = 0.75;
+	/** Tiles of random slack in the nearest-first order. */
+	private static final double ORDER_BLUR = 6.0;
 
 	private ForestLayout()
 	{
@@ -269,8 +271,9 @@ final class ForestLayout
 				candidates.add(c);
 			}
 		}
-		// Nearest first, so the budget cuts the outer band and the house surroundings fill first
-		candidates.sort(Comparator.<Candidate>comparingInt(c -> c.dist).thenComparingDouble(c -> c.key));
+		// Roughly nearest first, so the budget cuts the outer band; the blur keeps the trees from
+		// lining up in rings that follow the plot outline
+		candidates.sort(Comparator.comparingDouble(c -> c.dist + c.key * ORDER_BLUR));
 		result.candidates = candidates.size();
 
 		double density = Math.max(0.1, densityPct / 100.0);
