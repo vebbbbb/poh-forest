@@ -84,7 +84,7 @@ Trees grow only in empty (void) chunks outside the walkable plot (`ForestLayout.
 Distance field (Chebyshev) from built tiles; nothing within `clearingMargin`. Jittered candidate per tile, accepted nearest-first by Poisson-disc spacing that grows from `nearSpacing` to `farSpacing` over `falloffTiles`; scale grows to `outerBoostPct`. Budget cuts the outer band first. Seeded per tile + preset, so deterministic. Undergrowth is a second pass that avoids trees.
 
 ## Presets
-`ForestPreset` enum, each a `ForestStyle` (weighted `Species` lists, spacing, scale range, undergrowth). Kept after in-game review: `DENSE_PINE` (default, judged good) and `REDWOOD` (new, unreviewed), plus `CUSTOM` (a palette plus the slider values). Deciduous, autumn, magic, dead and jungle were removed because they looked poor; they are in git history (before `Remove poor presets`). All model IDs live in `ForestModels` with the source object ID.
+`ForestPreset` enum, each a `ForestStyle` (weighted `Species` lists, spacing, scale range, undergrowth). Kept after in-game review: `DENSE_PINE` (default, judged good) and `REDWOOD` (new, unreviewed), plus `CUSTOM` (a palette plus the slider values). Deciduous, autumn, magic, dead and jungle were removed because they looked poor; they are in git history (see the parent of commit 2c1dbe5). All model IDs live in `ForestModels` with the source object ID.
 - Redwood uses full-tree models 36721 / 36724 (2976 faces each), so it is heavy: budget accordingly.
 
 ## Ground cover and haze
